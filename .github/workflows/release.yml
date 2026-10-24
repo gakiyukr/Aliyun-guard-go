@@ -1,0 +1,80 @@
+# 自動發佈：推送到 main 即建置並發 GitHub Release。
+#
+# 版本號取自 cmd/guard/main.go 的 version 常數，作為唯一版本來源（避免
+# git tag 與程式內常數漂移）。升級版本時改該常數（如 0.1.0-m7 → 0.1.0-m8）
+# 即可產生新 Release；同版本重複發佈時覆蓋既有 Release 與標籤。
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 讀取版本號
+        id: ver
+        run: echo "version=$(grep -oP 'const version = "\K[^"]+' cmd/guard/main.go)" >> "$GITHUB_OUTPUT"
+
+      - name: 安裝 pnpm（版本取自 webapp/package.json 的 packageManager）
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: webapp/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: webapp/pnpm-lock.yaml
+
+      - name: 建置前端並同步 webapp/dist
+        working-directory: webapp
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm generate
+          node scripts/sync-dist.mjs
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # 只跑核心決策引擎，避免拖慢發佈；完整套件在開發機跑
+      - name: 核心測試
+        run: go test ./internal/guard/ ./internal/xtime/
+
+      - name: 建置 binaries
+        run: |
+          mkdir -p dist-bin
+          for target in linux/amd64 linux/arm64; do
+            goos=${target%/*}; goarch=${target#*/}
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
+              go build -trimpath -ldflags "-s -w" \
+              -o "dist-bin/aliyun-guard-go-${goos}-${goarch}" ./cmd/guard
+          done
+          sha256sum dist-bin/* > checksums.txt
+
+      - name: 發佈 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          TAG="v${VER}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+          printf '自動建置 commit %s\n\n- aliyun-guard-go-linux-amd64 / linux-arm64：webapp/dist 已內嵌，單檔即可運行\n- checksums.txt：SHA256 校驗\n' "${GITHUB_SHA::7}" > notes.md
+          gh release create "$TAG" dist-bin/* checksums.txt \
+            --target "$GITHUB_SHA" \
+            --title "aliyun-guard-go ${TAG}" \
+            --notes-file notes.md

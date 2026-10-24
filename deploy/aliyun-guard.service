@@ -1,0 +1,27 @@
+# aliyun-guard-go systemd 服務單元模板（部署到 /etc/systemd/system/aliyun-guard.service）
+# 對應 Python 版的守護方式：ExecStart 改為 run 子命令，重啟 API 走 systemctl。
+
+[Unit]
+Description=Aliyun CDT Guard (Go)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 部署根目錄：config.json / state.json / logs/ 皆位於此
+WorkingDirectory=/opt/aliyun-guard
+Environment=ALIYUN_GUARD_HOME=/opt/aliyun-guard
+ExecStart=/opt/aliyun-guard/aliyun-guard-go run
+Restart=always
+RestartSec=5
+# 安全加固
+User=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+# 允許寫入 /opt/aliyun-guard（state.json、logs、cycle.lock）
+ReadWritePaths=/opt/aliyun-guard
+
+[Install]
+WantedBy=multi-user.target
