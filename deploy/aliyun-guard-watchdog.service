@@ -1,0 +1,19 @@
+# Aliyun Guard 心跳看門狗服務（搭配 aliyun-guard-watchdog.timer 使用）。
+# 路徑為模板預設值，部署時按實際安裝位置修改（與 aliyun-guard.service 一致）。
+
+[Unit]
+Description=Aliyun Guard heartbeat watchdog (shell)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/aliyun-guard
+Environment=ALIYUN_GUARD_HOME=/opt/aliyun-guard
+Environment=ALIYUN_GUARD_CONFIG=/opt/aliyun-guard/config.json
+Environment=ALIYUN_GUARD_STATE=/opt/aliyun-guard/state.json
+ExecStart=/bin/sh /opt/aliyun-guard/watchdog.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

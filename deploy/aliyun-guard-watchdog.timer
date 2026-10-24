@@ -1,0 +1,13 @@
+# Aliyun Guard 心跳看門狗計時器：每分鐘檢查一次主程式心跳。
+
+[Unit]
+Description=Check Aliyun Guard heartbeat every minute
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=60s
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
